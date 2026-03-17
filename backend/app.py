@@ -46,6 +46,14 @@ def create_app(config_name: str = None) -> Flask:
     def missing_token_callback(error):
         return jsonify({"error": "Authorization token required"}), 401
 
+    # Serve uploaded files (local storage only — S3 serves directly via CDN)
+    if os.environ.get("STORAGE_BACKEND", "local") == "local":
+        from flask import send_from_directory
+
+        @app.route("/uploads/<path:filename>")
+        def serve_upload(filename):
+            return send_from_directory(app.config["UPLOAD_FOLDER"], filename)
+
     # Health check
     @app.route("/health")
     def health():

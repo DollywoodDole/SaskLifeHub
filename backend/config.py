@@ -29,6 +29,13 @@ class Config:
     MAX_CONTENT_LENGTH = 16 * 1024 * 1024  # 16MB max upload
     UPLOAD_FOLDER = os.path.join(os.path.dirname(__file__), "uploads")
 
+    # Storage — set STORAGE_BACKEND=s3 and provide S3 vars to switch
+    STORAGE_BACKEND = os.environ.get("STORAGE_BACKEND", "local")
+    AWS_ACCESS_KEY_ID = os.environ.get("AWS_ACCESS_KEY_ID", "")
+    AWS_SECRET_ACCESS_KEY = os.environ.get("AWS_SECRET_ACCESS_KEY", "")
+    AWS_REGION = os.environ.get("AWS_REGION", "ca-central-1")
+    S3_BUCKET = os.environ.get("S3_BUCKET", "")
+
 class DevelopmentConfig(Config):
     DEBUG = True
 

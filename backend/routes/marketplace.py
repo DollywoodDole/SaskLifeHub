@@ -5,6 +5,7 @@ from extensions import db
 from models.listing import Listing, Order, LISTING_CATEGORIES
 from models.user import User
 from services.notification_service import send_order_notification, send_listing_notification
+from services.upload_service import upload_images, delete_image, MAX_IMAGES_PER_LISTING
 
 marketplace_bp = Blueprint("marketplace", __name__, url_prefix="/marketplace")
 
@@ -82,6 +83,17 @@ def create_listing():
     except (ValueError, TypeError):
         return jsonify({"error": "Price must be a positive number"}), 400
 
+    # Handle image uploads
+    images = []
+    uploaded_files = request.files.getlist("images")
+    if uploaded_files:
+        if len(uploaded_files) > MAX_IMAGES_PER_LISTING:
+            return jsonify({"error": f"Maximum {MAX_IMAGES_PER_LISTING} images allowed"}), 400
+        try:
+            images = upload_images(uploaded_files)
+        except ValueError as e:
+            return jsonify({"error": str(e)}), 400
+
     listing = Listing(
         title=title,
         description=description,
@@ -90,7 +102,7 @@ def create_listing():
         category=category,
         location=location,
         seller_id=user_id,
-        images=[],
+        images=images,
     )
     db.session.add(listing)
     db.session.commit()
@@ -171,6 +183,57 @@ def create_order():
         pass
 
     return jsonify({"order": order.to_dict()}), 201
+
+
+@marketplace_bp.route("/listings/<listing_id>/images", methods=["POST"])
+@jwt_required()
+def add_images(listing_id):
+    user_id = get_jwt_identity()
+    listing = Listing.query.get(listing_id)
+    if not listing:
+        return jsonify({"error": "Listing not found"}), 404
+    if listing.seller_id != user_id:
+        return jsonify({"error": "Not authorized"}), 403
+
+    existing = listing.images or []
+    uploaded_files = request.files.getlist("images")
+    if not uploaded_files or not any(f.filename for f in uploaded_files):
+        return jsonify({"error": "No images provided"}), 400
+
+    if len(existing) + len(uploaded_files) > MAX_IMAGES_PER_LISTING:
+        return jsonify({
+            "error": f"Maximum {MAX_IMAGES_PER_LISTING} images per listing. You have {len(existing)}, tried to add {len(uploaded_files)}."
+        }), 400
+
+    try:
+        new_urls = upload_images(uploaded_files)
+    except ValueError as e:
+        return jsonify({"error": str(e)}), 400
+
+    listing.images = existing + new_urls
+    db.session.commit()
+    return jsonify({"images": listing.images}), 200
+
+
+@marketplace_bp.route("/listings/<listing_id>/images/<int:index>", methods=["DELETE"])
+@jwt_required()
+def delete_listing_image(listing_id, index):
+    user_id = get_jwt_identity()
+    listing = Listing.query.get(listing_id)
+    if not listing:
+        return jsonify({"error": "Listing not found"}), 404
+    if listing.seller_id != user_id:
+        return jsonify({"error": "Not authorized"}), 403
+
+    images = list(listing.images or [])
+    if index < 0 or index >= len(images):
+        return jsonify({"error": "Image index out of range"}), 400
+
+    url = images.pop(index)
+    delete_image(url)
+    listing.images = images
+    db.session.commit()
+    return jsonify({"images": listing.images}), 200
 
 
 @marketplace_bp.route("/orders", methods=["GET"])
