@@ -1,3 +1,5 @@
+// TODO: wire to backend API when a /utilities or /bills endpoint is added.
+// Currently uses static placeholder data.
 import React from 'react';
 import { View, Text, StyleSheet, FlatList, TouchableOpacity, ScrollView } from 'react-native';
 import { globalStyles } from './styles';

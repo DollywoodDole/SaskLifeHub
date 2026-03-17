@@ -1,3 +1,5 @@
+// TODO: wire to backend API when /health or /appointments endpoints are added.
+// Currently uses static placeholder data and local state for wellness tracking.
 import React, { useState } from 'react';
 import { View, Text, StyleSheet, FlatList, TouchableOpacity, ScrollView, TextInput } from 'react-native';
 import { globalStyles } from './styles';

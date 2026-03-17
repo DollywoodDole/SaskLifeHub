@@ -1,7 +1,19 @@
-import React from 'react';
-import { View, Text, StyleSheet, FlatList, TouchableOpacity, ScrollView } from 'react-native';
+import React, { useState, useEffect, useCallback } from 'react';
+import {
+  View,
+  Text,
+  StyleSheet,
+  FlatList,
+  TouchableOpacity,
+  ScrollView,
+  ActivityIndicator,
+  TextInput,
+} from 'react-native';
 import { globalStyles } from './styles';
+import { getListings } from './lib/apiClient';
 
+// Static category definitions (UI only — category values must match
+// the LISTING_CATEGORIES enum defined in the backend's models/listing.py)
 const marketplaceCategories = [
   { id: '1', name: 'Local Goods', description: 'Handmade crafts, farm produce, and more' },
   { id: '2', name: 'Agricultural Equipment', description: 'Tractors, grain bins, and farming tools' },
@@ -13,23 +25,49 @@ const marketplaceCategories = [
   { id: '8', name: 'Event Planning', description: 'Plan and book local activities and events' },
 ];
 
-const featuredListings = [
-  { id: '1', title: 'Handmade Pottery', price: '$25', category: 'Local Goods' },
-  { id: '2', title: 'John Deere Tractor', price: '$5000', category: 'Agricultural Equipment' },
-  { id: '3', title: 'Contractor for Hire', price: '$50/hr', category: 'Construction Services' },
-  { id: '4', title: 'Homemade Perogies', price: '$10/dozen', category: 'Homemade Food' },
-  { id: '5', title: 'Used Dining Table', price: '$200', category: 'Second-Hand Goods' },
-  { id: '6', title: 'Lawn Mowing Service', price: '$30', category: 'Local Services' },
-  { id: '7', title: 'Electric Motor', price: '$800', category: 'Manufacturing Machinery' },
-  { id: '8', title: 'Community Workshop', price: '$15', category: 'Event Planning' },
-];
-
+// Static local events (no backend endpoint exists for these yet)
+// TODO: wire to a backend /events endpoint when it is available
 const localEvents = [
   'SaskLife Community Market - May 3, 2025',
   'SaskLife Trade Fair for Farmers - May 10, 2025',
 ];
 
 export default function MarketplaceScreen() {
+  const [listings, setListings] = useState([]);
+  const [loadingListings, setLoadingListings] = useState(true);
+  const [listingsError, setListingsError] = useState('');
+  const [search, setSearch] = useState('');
+  const [searchInput, setSearchInput] = useState('');
+
+  // Fetch featured listings (first page, no filters by default)
+  const fetchListings = useCallback(async (searchTerm = '') => {
+    setLoadingListings(true);
+    setListingsError('');
+    try {
+      const params = { page: 1, per_page: 10 };
+      if (searchTerm) params.search = searchTerm;
+      const data = await getListings(params);
+      setListings(data.listings || []);
+    } catch (err) {
+      setListingsError(err.message || 'Failed to load listings.');
+      setListings([]);
+    } finally {
+      setLoadingListings(false);
+    }
+  }, []);
+
+  useEffect(() => {
+    fetchListings();
+  }, [fetchListings]);
+
+  const handleSearch = () => {
+    const term = searchInput.trim();
+    setSearch(term);
+    fetchListings(term);
+  };
+
+  // ── Renderers ──────────────────────────────────────────────────────────────
+
   const renderCategoryCard = ({ item }) => (
     <View style={styles.card}>
       <View style={styles.cardHeader}>
@@ -37,22 +75,37 @@ export default function MarketplaceScreen() {
       </View>
       <Text style={styles.description}>{item.description}</Text>
       <View style={styles.cardActions}>
-        <TouchableOpacity style={styles.button} onPress={() => alert(`Browsing ${item.name}`)}>
+        <TouchableOpacity
+          style={styles.button}
+          onPress={() => fetchListings(item.name)}
+        >
           <Text style={styles.buttonText}>Browse</Text>
         </TouchableOpacity>
-        <TouchableOpacity style={[styles.button, styles.buttonSecondary]} onPress={() => alert(`Listing in ${item.name}`)}>
+        <TouchableOpacity
+          style={[styles.button, styles.buttonSecondary]}
+          onPress={() => alert(`Listing in ${item.name}`)}
+        >
           <Text style={styles.buttonText}>List Item</Text>
         </TouchableOpacity>
       </View>
     </View>
   );
 
-  const renderFeaturedListing = ({ item }) => (
+  const renderListing = ({ item }) => (
     <View style={styles.listingCard}>
       <Text style={styles.listingTitle}>{item.title}</Text>
-      <Text style={styles.listingPrice}>{item.price}</Text>
+      <Text style={styles.listingPrice}>
+        ${typeof item.price === 'number' ? item.price.toFixed(2) : item.price}
+        {item.price_unit ? ` / ${item.price_unit}` : ''}
+      </Text>
       <Text style={styles.listingCategory}>Category: {item.category}</Text>
-      <TouchableOpacity style={styles.buttonSecondary} onPress={() => alert(`Viewing ${item.title}`)}>
+      {item.location ? (
+        <Text style={styles.listingLocation}>{item.location}</Text>
+      ) : null}
+      <TouchableOpacity
+        style={styles.buttonSecondary}
+        onPress={() => alert(`Viewing: ${item.title}`)}
+      >
         <Text style={styles.buttonText}>View Item</Text>
       </TouchableOpacity>
     </View>
@@ -64,12 +117,67 @@ export default function MarketplaceScreen() {
     </View>
   );
 
+  // ── Featured listings section content ─────────────────────────────────────
+  let featuredContent;
+  if (loadingListings) {
+    featuredContent = (
+      <View style={styles.centeredRow}>
+        <ActivityIndicator size="small" color="#2196F3" />
+        <Text style={styles.loadingText}>Loading listings…</Text>
+      </View>
+    );
+  } else if (listingsError) {
+    featuredContent = (
+      <View style={styles.errorBox}>
+        <Text style={styles.errorText}>{listingsError}</Text>
+        <TouchableOpacity
+          style={styles.retryButton}
+          onPress={() => fetchListings(search)}
+        >
+          <Text style={styles.buttonText}>Retry</Text>
+        </TouchableOpacity>
+      </View>
+    );
+  } else if (listings.length === 0) {
+    featuredContent = (
+      <Text style={styles.emptyText}>
+        {search ? `No listings found for "${search}".` : 'No active listings yet.'}
+      </Text>
+    );
+  } else {
+    featuredContent = (
+      <FlatList
+        data={listings}
+        keyExtractor={(item) => item.id}
+        renderItem={renderListing}
+        horizontal
+        showsHorizontalScrollIndicator={false}
+      />
+    );
+  }
+
   return (
     <ScrollView style={globalStyles.container}>
       {/* Agora Dashboard */}
       <View style={styles.overview}>
         <Text style={globalStyles.title}>SaskLife Marketplace Agora</Text>
         <Text style={styles.subtitle}>Your local hub for buying, selling, and trading</Text>
+      </View>
+
+      {/* Search bar */}
+      <View style={styles.searchRow}>
+        <TextInput
+          style={styles.searchInput}
+          placeholder="Search listings…"
+          placeholderTextColor="#aaa"
+          value={searchInput}
+          onChangeText={setSearchInput}
+          onSubmitEditing={handleSearch}
+          returnKeyType="search"
+        />
+        <TouchableOpacity style={styles.searchButton} onPress={handleSearch}>
+          <Text style={styles.buttonText}>Search</Text>
+        </TouchableOpacity>
       </View>
 
       {/* Marketplace Categories */}
@@ -83,19 +191,16 @@ export default function MarketplaceScreen() {
         />
       </View>
 
-      {/* Featured Listings */}
+      {/* Featured Listings (from API) */}
       <View style={styles.section}>
-        <Text style={styles.sectionTitle}>Featured Listings</Text>
-        <FlatList
-          data={featuredListings}
-          keyExtractor={(item) => item.id}
-          renderItem={renderFeaturedListing}
-          horizontal
-          showsHorizontalScrollIndicator={false}
-        />
+        <Text style={styles.sectionTitle}>
+          {search ? `Results for "${search}"` : 'Featured Listings'}
+        </Text>
+        {featuredContent}
       </View>
 
       {/* Local Events */}
+      {/* TODO: wire to a backend /events endpoint when available */}
       <View style={styles.section}>
         <Text style={styles.sectionTitle}>SaskLife Events</Text>
         <FlatList
@@ -118,6 +223,28 @@ const styles = StyleSheet.create({
     fontSize: 16,
     color: '#555',
     marginBottom: 10,
+  },
+  searchRow: {
+    flexDirection: 'row',
+    marginBottom: 10,
+    alignItems: 'center',
+  },
+  searchInput: {
+    flex: 1,
+    borderWidth: 1,
+    borderColor: '#ccc',
+    borderRadius: 8,
+    padding: 10,
+    fontSize: 15,
+    backgroundColor: '#fff',
+    color: '#333',
+    marginRight: 8,
+  },
+  searchButton: {
+    backgroundColor: '#2196F3',
+    paddingVertical: 10,
+    paddingHorizontal: 16,
+    borderRadius: 8,
   },
   section: {
     marginTop: 20,
@@ -168,6 +295,7 @@ const styles = StyleSheet.create({
     paddingVertical: 8,
     paddingHorizontal: 15,
     borderRadius: 5,
+    marginTop: 8,
   },
   buttonText: {
     color: '#fff',
@@ -194,6 +322,11 @@ const styles = StyleSheet.create({
     fontSize: 12,
     color: '#555',
   },
+  listingLocation: {
+    fontSize: 12,
+    color: '#888',
+    marginTop: 2,
+  },
   eventCard: {
     backgroundColor: '#FFF8E1',
     borderRadius: 10,
@@ -203,5 +336,37 @@ const styles = StyleSheet.create({
   eventText: {
     fontSize: 14,
     color: '#2E7D32',
+  },
+  centeredRow: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    paddingVertical: 12,
+  },
+  loadingText: {
+    marginLeft: 10,
+    color: '#555',
+    fontSize: 14,
+  },
+  errorBox: {
+    backgroundColor: '#FFEBEE',
+    borderRadius: 8,
+    padding: 14,
+  },
+  errorText: {
+    color: '#D32F2F',
+    fontSize: 14,
+    marginBottom: 8,
+  },
+  retryButton: {
+    backgroundColor: '#2196F3',
+    paddingVertical: 8,
+    paddingHorizontal: 16,
+    borderRadius: 6,
+    alignSelf: 'flex-start',
+  },
+  emptyText: {
+    color: '#888',
+    fontSize: 14,
+    fontStyle: 'italic',
   },
 });
