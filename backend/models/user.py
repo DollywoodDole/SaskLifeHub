@@ -1,5 +1,5 @@
 import uuid
-from datetime import datetime
+from datetime import datetime, timezone
 from extensions import db
 import bcrypt
 
@@ -16,8 +16,10 @@ class User(db.Model):
     avatar_url = db.Column(db.String(500), nullable=True)
     is_verified = db.Column(db.Boolean, default=False, nullable=False)
     email_verification_token = db.Column(db.String(255), nullable=True)
-    refresh_token_hash = db.Column(db.String(255), nullable=True)
-    created_at = db.Column(db.DateTime, default=datetime.utcnow)
+    email_verification_expires = db.Column(db.DateTime, nullable=True)
+    password_reset_token = db.Column(db.String(255), nullable=True)
+    password_reset_expires = db.Column(db.DateTime, nullable=True)
+    created_at = db.Column(db.DateTime, default=lambda: datetime.now(timezone.utc))
     updated_at = db.Column(db.DateTime, default=datetime.utcnow, onupdate=datetime.utcnow)
 
     listings = db.relationship("Listing", back_populates="seller", foreign_keys="Listing.seller_id", lazy="dynamic")

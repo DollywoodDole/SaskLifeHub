@@ -21,7 +21,9 @@ api.interceptors.response.use(
       const refresh = Cookies.get("refresh_token");
       if (refresh) {
         try {
-          const { data } = await axios.post("/api/auth/refresh", { refresh_token: refresh });
+          const { data } = await axios.post("/api/auth/refresh", {}, {
+            headers: { Authorization: `Bearer ${refresh}` },
+          });
           Cookies.set("access_token", data.access_token, { expires: 1 });
           original.headers.Authorization = `Bearer ${data.access_token}`;
           return api(original);
@@ -46,6 +48,10 @@ export const authApi = {
     api.post("/auth/verify-email", { token }),
   resendVerification: (email: string) =>
     api.post("/auth/resend-verification", { email }),
+  forgotPassword: (email: string) =>
+    api.post("/auth/forgot-password", { email }),
+  resetPassword: (token: string, password: string) =>
+    api.post("/auth/reset-password", { token, password }),
   me: () => api.get("/auth/me"),
 };
 

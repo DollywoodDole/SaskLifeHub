@@ -45,3 +45,40 @@ def send_verification_email(email: str, name: str, token: str):
     except Exception as e:
         current_app.logger.error(f"Failed to send verification email to {email}: {e}")
         raise
+
+
+def send_password_reset_email(email: str, name: str, token: str):
+    if not _mail_configured():
+        frontend_url = current_app.config.get("FRONTEND_URL", "http://localhost:3000")
+        reset_url = f"{frontend_url}/auth/reset-password?token={token}"
+        current_app.logger.info(
+            f"[DEV] Email skipped (MAIL not configured). Reset URL: {reset_url}"
+        )
+        return
+
+    frontend_url = current_app.config.get("FRONTEND_URL", "http://localhost:3000")
+    reset_url = f"{frontend_url}/auth/reset-password?token={token}"
+    msg = Message(
+        subject="Reset your SaskLifeHub password",
+        recipients=[email],
+        html=f"""
+        <div style="font-family: Arial, sans-serif; max-width: 600px; margin: 0 auto;">
+            <h2 style="color: #2196F3;">Reset your password</h2>
+            <p>Hi {name}, we received a request to reset your SaskLifeHub password.</p>
+            <a href="{reset_url}" style="display: inline-block; background: #2196F3; color: white; padding: 12px 24px; border-radius: 6px; text-decoration: none; font-weight: bold;">
+                Reset Password
+            </a>
+            <p style="color: #666; font-size: 12px; margin-top: 20px;">
+                If the button doesn't work, copy this link: {reset_url}
+            </p>
+            <p style="color: #666; font-size: 12px;">
+                This link expires in 1 hour. If you didn't request this, you can safely ignore this email.
+            </p>
+        </div>
+        """,
+    )
+    try:
+        mail.send(msg)
+    except Exception as e:
+        current_app.logger.error(f"Failed to send password reset email to {email}: {e}")
+        raise

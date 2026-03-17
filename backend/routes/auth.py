@@ -1,4 +1,5 @@
 import secrets
+from datetime import datetime, timedelta, timezone
 from flask import Blueprint, request, jsonify, current_app
 from flask_jwt_extended import (
     create_access_token, create_refresh_token,
@@ -7,7 +8,7 @@ from flask_jwt_extended import (
 from extensions import db
 from models.user import User
 from services.notification_service import send_welcome_notification
-from services.email_service import send_verification_email
+from services.email_service import send_verification_email, send_password_reset_email
 
 auth_bp = Blueprint("auth", __name__, url_prefix="/auth")
 
@@ -32,6 +33,7 @@ def signup():
     user = User(email=email, name=name)
     user.set_password(password)
     user.email_verification_token = secrets.token_urlsafe(32)
+    user.email_verification_expires = datetime.now(timezone.utc) + timedelta(hours=24)
 
     db.session.add(user)
     db.session.commit()
@@ -117,8 +119,12 @@ def verify_email():
     if not user:
         return jsonify({"error": "Invalid or expired verification token"}), 400
 
+    if user.email_verification_expires and datetime.now(timezone.utc) > user.email_verification_expires.replace(tzinfo=timezone.utc):
+        return jsonify({"error": "Verification link has expired. Please request a new one."}), 400
+
     user.is_verified = True
     user.email_verification_token = None
+    user.email_verification_expires = None
     db.session.commit()
 
     return jsonify({"message": "Email verified successfully"}), 200
@@ -138,6 +144,7 @@ def resend_verification():
         return jsonify({"message": "Email is already verified"}), 200
 
     user.email_verification_token = secrets.token_urlsafe(32)
+    user.email_verification_expires = datetime.now(timezone.utc) + timedelta(hours=24)
     db.session.commit()
 
     try:
@@ -146,6 +153,55 @@ def resend_verification():
         return jsonify({"error": "Failed to send email. Please try again later."}), 500
 
     return jsonify({"message": "Verification email sent"}), 200
+
+
+@auth_bp.route("/forgot-password", methods=["POST"])
+def forgot_password():
+    data = request.get_json()
+    email = (data.get("email", "") if data else "").strip().lower()
+    if not email:
+        return jsonify({"error": "Email is required"}), 400
+
+    user = User.query.filter_by(email=email).first()
+    # Always return success to prevent email enumeration
+    if not user:
+        return jsonify({"message": "If that account exists, a password reset email has been sent"}), 200
+
+    user.password_reset_token = secrets.token_urlsafe(32)
+    user.password_reset_expires = datetime.now(timezone.utc) + timedelta(hours=1)
+    db.session.commit()
+
+    try:
+        send_password_reset_email(email, user.name, user.password_reset_token)
+    except Exception:
+        return jsonify({"error": "Failed to send email. Please try again later."}), 500
+
+    return jsonify({"message": "If that account exists, a password reset email has been sent"}), 200
+
+
+@auth_bp.route("/reset-password", methods=["POST"])
+def reset_password():
+    data = request.get_json()
+    token = data.get("token", "") if data else ""
+    password = data.get("password", "") if data else ""
+
+    if not token or not password:
+        return jsonify({"error": "Token and password are required"}), 400
+    if len(password) < 8:
+        return jsonify({"error": "Password must be at least 8 characters"}), 400
+
+    user = User.query.filter_by(password_reset_token=token).first()
+    if not user:
+        return jsonify({"error": "Invalid or expired reset token"}), 400
+    if datetime.now(timezone.utc) > user.password_reset_expires.replace(tzinfo=timezone.utc):
+        return jsonify({"error": "Reset link has expired. Please request a new one."}), 400
+
+    user.set_password(password)
+    user.password_reset_token = None
+    user.password_reset_expires = None
+    db.session.commit()
+
+    return jsonify({"message": "Password reset successfully"}), 200
 
 
 @auth_bp.route("/logout", methods=["POST"])
