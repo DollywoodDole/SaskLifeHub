@@ -1,0 +1,22 @@
+# Python
+backend/venv/
+backend/__pycache__/
+backend/**/__pycache__/
+backend/**/*.pyc
+backend/*.db
+backend/uploads/*
+!backend/uploads/.gitkeep
+backend/backend.log
+
+# Environment
+backend/.env
+.env
+
+# Node
+frontend/node_modules/
+frontend/.next/
+frontend/frontend.log
+
+# OS
+.DS_Store
+Thumbs.db
