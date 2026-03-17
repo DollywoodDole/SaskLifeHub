@@ -1,11 +1,11 @@
 [build]
-builder = "nixpacks"
+builder = "NIXPACKS"
 buildCommand = "pip install -r requirements.txt"
 
 [deploy]
 startCommand = "gunicorn 'app:create_app()' --bind 0.0.0.0:$PORT --workers 2 --timeout 120"
-restartPolicyType = "on-failure"
-restartPolicyMaxRetries = 3
+restartPolicyType = "ON_FAILURE"
+restartPolicyMaxRetries = 10
 
 [environments.production.deploy]
 startCommand = "flask db upgrade && gunicorn 'app:create_app()' --bind 0.0.0.0:$PORT --workers 2 --timeout 120"
